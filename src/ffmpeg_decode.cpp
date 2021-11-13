@@ -36,13 +36,6 @@ int FFmpegDecode::Init() {
     fmt::print(stderr, "InitAvFrame failed, ret {}\n", ret);
     return ret;
   }
-
-  ret = InitSwsCtx();
-  if (ret != 0) {
-    fmt::print(stderr, "InitSwsCtx failed, ret {}\n", ret);
-    return ret;
-  }
-
   return 0;
 }
 
@@ -78,6 +71,12 @@ void FFmpegDecode::SaveVideoStream(const string& target_path) {
 }
 
 void FFmpegDecode::DecodeAv() {
+  int ret = InitSwsCtx();
+  if (ret != 0) {
+    fmt::print(stderr, "InitSwsCtx failed, ret {}\n", ret);
+    return;
+  }
+
   AVPacket av_packet;
   while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
     if (av_packet.stream_index == video_stream_->index) {

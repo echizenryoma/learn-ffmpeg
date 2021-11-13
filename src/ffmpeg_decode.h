@@ -22,10 +22,9 @@ class FFmpegDecode {
   void SetVideoTargetPixelFormat(AVPixelFormat pixel_format);
 
   int Init();
-  
-  void SaveVideoStream(const string& target_path);
 
-  void DecodeAv();
+  void SaveVideoStream(const string& target_path);
+  void DecimatedFrame(const string& target_dir);
 
  private:
   int InitAvCtx();
@@ -33,8 +32,9 @@ class FFmpegDecode {
   int InitAvFrame();
   int InitSwsCtx();
 
-  void DecodeVideoFrame(AVFrame* frame);
-  void SaveVideoPixel(AVFrame* frame);
+  void ResetAvStream();
+
+  void SaveVideoPixel(const string& target_dir, AVFrame* frame);
 
  private:
   string av_path_;

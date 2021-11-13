@@ -1,7 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.8)
 
 project("learn-ffmpeg")
-link_libraries("-static")
+# link_libraries("-static")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -15,12 +15,11 @@ endif()
 set(CMAKE_LEGACY_CYGWIN_WIN32 0)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(fmt CONFIG REQUIRED)
+find_package(fmt CONFIG)
 find_package(spdlog CONFIG REQUIRED)
 find_package(FFmpeg REQUIRED COMPONENTS AVCODEC AVFORMAT AVUTIL SWSCALE)
 if(FFMPEG_FOUND)
     message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
-    message("SWRESAMPLE_LIBRARIES: ${SWRESAMPLE_LIBRARIES}")
     include_directories(${FFMPEG_INCLUDE_DIRS})
 endif()
 
@@ -43,8 +42,7 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    fmt::fmt-header-only
-    spdlog::spdlog_header_only
+    fmt::fmt fmt::fmt-header-only
+    spdlog::spdlog spdlog::spdlog_header_only
     ${FFMPEG_LIBRARIES}
-    ${SWRESAMPLE_LIBRARIES}
 )

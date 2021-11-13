@@ -2,7 +2,6 @@
 
 #include <thread>
 
-#include "fmt/core.h"
 #include "fmt/printf.h"
 #include "spdlog/spdlog.h"
 
@@ -41,6 +40,7 @@ int FFmpegDecode::Init() {
 }
 
 void FFmpegDecode::SaveVideoStream(const string& target_path) {
+  ResetAvStream();
   AVFormatContext* target_ctx_ptr = nullptr;
   int ret = avformat_alloc_output_context2(&target_ctx_ptr, NULL, NULL, target_path.c_str());
   if (ret != 0) {
@@ -71,7 +71,8 @@ void FFmpegDecode::SaveVideoStream(const string& target_path) {
   av_write_trailer(target_ctx.get());
 }
 
-void FFmpegDecode::DecodeAv() {
+void FFmpegDecode::DecimatedFrame(const string& target_dir) {
+  ResetAvStream();
   int ret = InitSwsCtx();
   if (ret != 0) {
     spdlog::error("InitSwsCtx failed, ret {}", ret);
@@ -88,7 +89,11 @@ void FFmpegDecode::DecodeAv() {
       if (av_packet.size <= 0) {
         continue;
       }
-      DecodeVideoFrame(video_frame_.get());
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
+      if (ret == 0) {
+        SaveVideoPixel(target_dir, video_frame_.get());
+        video_frame_num_++;
+      }
     }
   }
 }
@@ -162,23 +167,26 @@ int FFmpegDecode::InitSwsCtx() {
   return 0;
 }
 
-void FFmpegDecode::DecodeVideoFrame(AVFrame* frame) {
-  while (avcodec_receive_frame(video_codec_ctx_.get(), frame) == 0) {
-    SaveVideoPixel(frame);
-    video_frame_num_++;
+void FFmpegDecode::ResetAvStream() {
+  avio_seek(av_ctx_->pb, 0, SEEK_SET);
+  int ret = avformat_seek_file(av_ctx_.get(), video_stream_->index, 0, 0, INT64_MAX,
+                               AVSEEK_FLAG_BACKWARD);
+  if (ret < 0) {
+    spdlog::error("avformat_seek_file failed, ret {}", ret);
+    return;
   }
 }
 
-void FFmpegDecode::SaveVideoPixel(AVFrame* frame) {
+void FFmpegDecode::SaveVideoPixel(const string& target_dir, AVFrame* frame) {
   uint8_t* video_target_pixel_ptr[] = {video_target_pixel_.data()};
   int video_target_pixel_line_sizes[] = {video_codec_ctx_->width * 3};
-  if (video_frame_num_ % 1000 == 0) {
+  if (video_frame_num_ % 100 == 0) {
     sws_scale(sws_ctx_, frame->data, frame->linesize, 0, frame->height, video_target_pixel_ptr,
               video_target_pixel_line_sizes);
-    string image_path = fmt::format("../static/demo_{}.jpg", video_frame_num_);
+    string image_path = fmt::format("{}/demo_{}.jpg", target_dir, video_frame_num_);
     int ret = stbi_write_jpg(image_path.c_str(), frame->width, frame->height, 3,
                              video_target_pixel_.data(), 80);
-    if (ret != 1) {
+    if (ret < 0) {
       spdlog::error("stbi_write_jpg {} failed, ret {}", image_path, ret);
     }
   }

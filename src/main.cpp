@@ -1,6 +1,7 @@
 #include <string>
 
 #include "ffmpeg_decode.h"
+#include "spdlog/spdlog.h"
 
 using namespace std;
 
@@ -9,9 +10,10 @@ int main() {
   ryoma::FFmpegDecode ffmpeg_decode(av_path);
   int ret = ffmpeg_decode.Init();
   if (ret != 0) {
+    spdlog::error("FFmpegDecode::Init failed, ret {}", ret);
     return ret;
   }
-  //ffmpeg_decode.DecodeAv();
+  // ffmpeg_decode.DecodeAv();
   string video_path = "../static/demo.h264";
   ffmpeg_decode.SaveVideoStream(video_path);
   return 0;

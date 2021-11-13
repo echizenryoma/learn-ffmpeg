@@ -4,6 +4,7 @@
 
 #include "fmt/core.h"
 #include "fmt/printf.h"
+#include "spdlog/spdlog.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -21,19 +22,19 @@ void FFmpegDecode::SetVideoTargetPixelFormat(AVPixelFormat pixel_format) {
 int FFmpegDecode::Init() {
   int ret = InitAvCtx();
   if (ret != 0) {
-    fmt::print(stderr, "InitAvCtx failed, ret {}\n", ret);
+    spdlog::error("InitAvCtx failed, ret {}", ret);
     return ret;
   }
 
   ret = InitAvCodecCtx();
   if (ret != 0) {
-    fmt::print(stderr, "InitAvCodecCtx failed, ret {}\n", ret);
+    spdlog::error("InitAvCodecCtx failed, ret {}", ret);
     return ret;
   }
 
   ret = InitAvFrame();
   if (ret != 0) {
-    fmt::print(stderr, "InitAvFrame failed, ret {}\n", ret);
+    spdlog::error("InitAvFrame failed, ret {}", ret);
     return ret;
   }
   return 0;
@@ -43,7 +44,7 @@ void FFmpegDecode::SaveVideoStream(const string& target_path) {
   AVFormatContext* target_ctx_ptr = nullptr;
   int ret = avformat_alloc_output_context2(&target_ctx_ptr, NULL, NULL, target_path.c_str());
   if (ret != 0) {
-    fmt::print(stderr, "avformat_alloc_output_context2 failed, path {} ret {}\n", target_path, ret);
+    spdlog::error("avformat_alloc_output_context2 failed, path {} ret {}", target_path, ret);
     return;
   }
   shared_ptr<AVFormatContext> target_ctx(target_ctx_ptr,
@@ -56,7 +57,7 @@ void FFmpegDecode::SaveVideoStream(const string& target_path) {
 
   ret = avformat_write_header(target_ctx.get(), nullptr);
   if (ret < 0) {
-    fmt::print(stderr, "avformat_write_header failed, ret {}\n", ret);
+    spdlog::error("avformat_write_header failed, ret {}", ret);
     return;
   }
   av_dump_format(target_ctx.get(), 0, target_ctx->url, 1);
@@ -73,7 +74,7 @@ void FFmpegDecode::SaveVideoStream(const string& target_path) {
 void FFmpegDecode::DecodeAv() {
   int ret = InitSwsCtx();
   if (ret != 0) {
-    fmt::print(stderr, "InitSwsCtx failed, ret {}\n", ret);
+    spdlog::error("InitSwsCtx failed, ret {}", ret);
     return;
   }
 
@@ -98,7 +99,7 @@ int FFmpegDecode::InitAvCtx() {
   AVFormatContext* av_ctx_ptr = nullptr;
   int ret = avformat_open_input(&av_ctx_ptr, path.c_str(), nullptr, nullptr);
   if (ret < 0) {
-    fmt::print(stderr, "avformat open {} failed, ret {}\n", path, ret);
+    spdlog::error("avformat open {} failed, ret {}", path, ret);
     return ret;
   }
   av_ctx_.reset(av_ctx_ptr, [](AVFormatContext*& ptr) { avformat_close_input(&ptr); });
@@ -109,36 +110,36 @@ int FFmpegDecode::InitAvCodecCtx() {
   av_dump_format(av_ctx_.get(), 0, av_ctx_->url, 0);
   int ret = avformat_find_stream_info(av_ctx_.get(), nullptr);
   if (ret < 0) {
-    fmt::print(stderr, "avformat_find_stream_info failed, ret {}\n", ret);
+    spdlog::error("avformat_find_stream_info failed, ret {}", ret);
     return ret;
   }
 
   int video_stream_index = av_find_best_stream(av_ctx_.get(), AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
   if (video_stream_index == AVERROR_STREAM_NOT_FOUND) {
-    fmt::print(stderr, "not found video stream\n");
+    spdlog::error("not found video stream");
     return AVERROR_STREAM_NOT_FOUND;
   }
   video_stream_ = av_ctx_->streams[video_stream_index];
   auto* video_codec = avcodec_find_decoder(video_stream_->codecpar->codec_id);
   if (video_codec == nullptr) {
-    fmt::print(stderr, "not found video codec, codec_id {}\n", video_stream_->codecpar->codec_id);
+    spdlog::error("not found video codec, codec_id {}", video_stream_->codecpar->codec_id);
     return -1;
   }
   video_codec_ctx_.reset(avcodec_alloc_context3(video_codec),
                          [](AVCodecContext*& ptr) { avcodec_free_context(&ptr); });
   if (video_codec_ctx_ == nullptr) {
-    fmt::print(stderr, "not found video decodec context\n");
+    spdlog::error("not found video decodec context");
     return -1;
   }
   ret = avcodec_parameters_to_context(video_codec_ctx_.get(), video_stream_->codecpar);
   video_codec_ctx_->thread_count = std::thread::hardware_concurrency();
   if (ret < 0) {
-    fmt::print(stderr, "avcodec_parameters_to_context failed, ret {}\n", ret);
+    spdlog::error("avcodec_parameters_to_context failed, ret {}", ret);
     return ret;
   }
   ret = avcodec_open2(video_codec_ctx_.get(), video_codec, nullptr);
   if (ret < 0) {
-    fmt::print(stderr, "avcodec_open2 failed, ret {}\n", ret);
+    spdlog::error("avcodec_open2 failed, ret {}", ret);
     return ret;
   }
   return 0;
@@ -178,7 +179,7 @@ void FFmpegDecode::SaveVideoPixel(AVFrame* frame) {
     int ret = stbi_write_jpg(image_path.c_str(), frame->width, frame->height, 3,
                              video_target_pixel_.data(), 80);
     if (ret != 1) {
-      fmt::print(stderr, "stbi_write_jpg {} failed, ret {}\n", image_path, ret);
+      spdlog::error("stbi_write_jpg {} failed, ret {}", image_path, ret);
     }
   }
 }

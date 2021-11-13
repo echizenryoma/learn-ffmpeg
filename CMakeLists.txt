@@ -16,7 +16,7 @@ set(CMAKE_LEGACY_CYGWIN_WIN32 0)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(fmt CONFIG REQUIRED)
-
+find_package(spdlog CONFIG REQUIRED)
 find_package(FFmpeg REQUIRED COMPONENTS AVCODEC AVFORMAT AVUTIL SWSCALE)
 if(FFMPEG_FOUND)
     message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
@@ -44,6 +44,7 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     fmt::fmt-header-only
+    spdlog::spdlog_header_only
     ${FFMPEG_LIBRARIES}
     ${SWRESAMPLE_LIBRARIES}
 )

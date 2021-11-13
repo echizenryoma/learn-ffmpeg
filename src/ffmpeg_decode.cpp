@@ -4,6 +4,7 @@
 #include <thread>
 
 #include "fmt/printf.h"
+#include "sdl_player.h"
 #include "spdlog/spdlog.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -124,6 +125,36 @@ void FFmpegDecode::DecimatedFrame(const string& target_dir) {
       ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
       if (ret == 0) {
         SaveVideoPixel(target_dir, video_frame_.get());
+        video_frame_num_++;
+      }
+    }
+  }
+}
+
+void FFmpegDecode::Play() {
+  ryoma::SdlPlayer player;
+
+
+  ResetAvStream();
+  int video_width = video_codec_ctx_->width;
+  int video_height = video_codec_ctx_->height;
+  int pixel_size = video_width * video_height;
+
+  player.Init(video_width, video_height, "Simple Video Player");
+
+  AVPacket av_packet;
+  while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
+    if (av_packet.stream_index == video_stream_->index) {
+      int ret = avcodec_send_packet(video_codec_ctx_.get(), &av_packet);
+      if (ret < 0) {
+        continue;
+      }
+      if (av_packet.size <= 0) {
+        continue;
+      }
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
+      if (ret == 0) {
+        player.RendererFrame(video_frame_.get(), 41);
         video_frame_num_++;
       }
     }

@@ -6,7 +6,13 @@
 #include <string>
 #include <vector>
 
+#include "fmt/core.h"
 #include "fmt/printf.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image.h"
+#include "stb_image_write.h"
 
 extern "C" {
 #include "libavcodec/avcodec.h"
@@ -15,23 +21,27 @@ extern "C" {
 #include "libswscale/swscale.h"
 }
 
-#include "opencv2/core.hpp"
-#include "opencv2/highgui.hpp"
-
-using defer = std::shared_ptr<void>;
-
 using namespace std;
 
 static size_t frame_num = 0;
 
 void DecodeVideoFrame(AVCodecContext* codec, SwsContext* swsctx, AVFrame* frame) {
-  cv::Mat image(codec->height, codec->width, CV_8UC3);
-  int image_line_sizes[] = {static_cast<int>(image.step1())};
+  int rgb_pixels_size = av_image_get_buffer_size(AV_PIX_FMT_RGB24, codec->width, codec->height, 1);
+  vector<uint8_t> rgb_pixels(rgb_pixels_size);
+  uint8_t* rgb_pixels_ptr[] = {rgb_pixels.data()};
+  int pixels_line_sizes[] = {codec->width * 3};
 
   while (avcodec_receive_frame(codec, frame) == 0) {
-    sws_scale(swsctx, frame->data, frame->linesize, 0, frame->height, &image.data,
-              image_line_sizes);
-    imwrite("../static/demo_" + to_string(frame_num) + ".jpg", image);
+    sws_scale(swsctx, frame->data, frame->linesize, 0, frame->height, rgb_pixels_ptr,
+              pixels_line_sizes);
+    if (frame_num % 100 == 0) {
+      string image_path = fmt::format("../static/demo_{}.jpg", frame_num);
+      int ret =
+          stbi_write_jpg(image_path.c_str(), frame->width, frame->height, 3, rgb_pixels.data(), 80);
+      if (ret != 1) {
+        fmt::print(stderr, "stbi_write_jpg {} failed, ret {}\n", image_path, ret);
+      }
+    }
     frame_num++;
   }
 }
@@ -91,7 +101,7 @@ int main() {
   SwsContext* swsctx = sws_getCachedContext(
       nullptr, video_stream->codecpar->width, video_stream->codecpar->height,
       video_dec_ctx->pix_fmt, video_stream->codecpar->width, video_stream->codecpar->height,
-      AV_PIX_FMT_BGR24, 0, nullptr, nullptr, nullptr);
+      AV_PIX_FMT_RGB24, 0, nullptr, nullptr, nullptr);
   size_t frame_num = 0;
   while (true) {
     ret = av_read_frame(avctx.get(), &av_packet);

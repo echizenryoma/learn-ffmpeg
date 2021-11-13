@@ -1,5 +1,7 @@
 #include "ffmpeg_decode.h"
 
+#include <thread>
+
 #include "fmt/core.h"
 #include "fmt/printf.h"
 
@@ -99,6 +101,7 @@ int FFmpegDecode::InitAvCodecCtx() {
     return -1;
   }
   ret = avcodec_parameters_to_context(video_codec_ctx_.get(), video_stream_->codecpar);
+  video_codec_ctx_->thread_count = std::thread::hardware_concurrency();
   if (ret < 0) {
     fmt::print(stderr, "avcodec_parameters_to_context failed, ret {}\n", ret);
     return ret;
@@ -132,9 +135,9 @@ void FFmpegDecode::DecadeVideoFrame(AVFrame* frame) {
   uint8_t* video_target_pixel_ptr[] = {video_target_pixel_.data()};
   int video_target_pixel_line_sizes[] = {video_codec_ctx_->width * 3};
   while (avcodec_receive_frame(video_codec_ctx_.get(), frame) == 0) {
-    sws_scale(sws_ctx_, video_frame_->data, video_frame_->linesize, 0, video_frame_->height,
-              video_target_pixel_ptr, video_target_pixel_line_sizes);
     if (video_frame_num_ % 1000 == 0) {
+      sws_scale(sws_ctx_, video_frame_->data, video_frame_->linesize, 0, video_frame_->height,
+                video_target_pixel_ptr, video_target_pixel_line_sizes);
       string image_path = fmt::format("../static/demo_{}.jpg", video_frame_num_);
       int ret = stbi_write_jpg(image_path.c_str(), frame->width, frame->height, 3,
                                video_target_pixel_.data(), 80);

@@ -1,5 +1,6 @@
 #include "ffmpeg_decode.h"
 
+#include <fstream>
 #include <thread>
 
 #include "fmt/printf.h"
@@ -69,6 +70,37 @@ void FFmpegDecode::SaveVideoStream(const string& target_path) {
     }
   }
   av_write_trailer(target_ctx.get());
+}
+
+void FFmpegDecode::ExportYuv420(const string& prefix_path) {
+  ResetAvStream();
+  ofstream fout(prefix_path, ios::out | ios::trunc | ios::binary);
+
+  int video_width = video_codec_ctx_->width;
+  int video_height = video_codec_ctx_->height;
+  int pixel_size = video_width * video_height;
+
+  AVPacket av_packet;
+  while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
+    if (av_packet.stream_index == video_stream_->index) {
+      int ret = avcodec_send_packet(video_codec_ctx_.get(), &av_packet);
+      if (ret < 0) {
+        continue;
+      }
+      if (av_packet.size <= 0) {
+        continue;
+      }
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
+      if (ret == 0) {
+        // yuv420: yyyyyyyyuuvv|yyyyyyyyuuvv
+        fout.write(reinterpret_cast<char*>(video_frame_->data[0]), pixel_size);
+        fout.write(reinterpret_cast<char*>(video_frame_->data[1]), pixel_size / 4);
+        fout.write(reinterpret_cast<char*>(video_frame_->data[2]), pixel_size / 4);
+        video_frame_num_++;
+      }
+    }
+  }
+  fout.close();
 }
 
 void FFmpegDecode::DecimatedFrame(const string& target_dir) {

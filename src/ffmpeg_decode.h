@@ -24,6 +24,7 @@ class FFmpegDecode {
   int Init();
 
   void SaveVideoStream(const string& target_path);
+  void ExportYuv420(const string& target_path);
   void DecimatedFrame(const string& target_dir);
 
  private:

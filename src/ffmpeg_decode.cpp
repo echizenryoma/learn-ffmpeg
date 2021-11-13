@@ -46,6 +46,37 @@ int FFmpegDecode::Init() {
   return 0;
 }
 
+void FFmpegDecode::SaveVideoStream(const string& target_path) {
+  AVFormatContext* target_ctx_ptr = nullptr;
+  int ret = avformat_alloc_output_context2(&target_ctx_ptr, NULL, NULL, target_path.c_str());
+  if (ret != 0) {
+    fmt::print(stderr, "avformat_alloc_output_context2 failed, path {} ret {}\n", target_path, ret);
+    return;
+  }
+  shared_ptr<AVFormatContext> target_ctx(target_ctx_ptr,
+                                         [](AVFormatContext*& ptr) { avformat_close_input(&ptr); });
+  AVStream* video_target_stream = avformat_new_stream(target_ctx.get(), nullptr);
+  avio_open(&target_ctx->pb, target_ctx->url, AVIO_FLAG_WRITE);
+
+  video_target_stream->time_base = video_stream_->time_base;
+  avcodec_parameters_copy(video_target_stream->codecpar, video_stream_->codecpar);
+
+  ret = avformat_write_header(target_ctx.get(), nullptr);
+  if (ret < 0) {
+    fmt::print(stderr, "avformat_write_header failed, ret {}\n", ret);
+    return;
+  }
+  av_dump_format(target_ctx.get(), 0, target_ctx->url, 1);
+
+  AVPacket av_packet;
+  while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
+    if (av_packet.stream_index == video_stream_->index) {
+      av_interleaved_write_frame(target_ctx.get(), &av_packet);
+    }
+  }
+  av_write_trailer(target_ctx.get());
+}
+
 void FFmpegDecode::DecodeAv() {
   AVPacket av_packet;
   while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
@@ -57,7 +88,7 @@ void FFmpegDecode::DecodeAv() {
       if (av_packet.size <= 0) {
         continue;
       }
-      DecadeVideoFrame(video_frame_.get());
+      DecodeVideoFrame(video_frame_.get());
     }
   }
 }
@@ -131,21 +162,25 @@ int FFmpegDecode::InitSwsCtx() {
   return 0;
 }
 
-void FFmpegDecode::DecadeVideoFrame(AVFrame* frame) {
+void FFmpegDecode::DecodeVideoFrame(AVFrame* frame) {
+  while (avcodec_receive_frame(video_codec_ctx_.get(), frame) == 0) {
+    SaveVideoPixel(frame);
+    video_frame_num_++;
+  }
+}
+
+void FFmpegDecode::SaveVideoPixel(AVFrame* frame) {
   uint8_t* video_target_pixel_ptr[] = {video_target_pixel_.data()};
   int video_target_pixel_line_sizes[] = {video_codec_ctx_->width * 3};
-  while (avcodec_receive_frame(video_codec_ctx_.get(), frame) == 0) {
-    if (video_frame_num_ % 1000 == 0) {
-      sws_scale(sws_ctx_, video_frame_->data, video_frame_->linesize, 0, video_frame_->height,
-                video_target_pixel_ptr, video_target_pixel_line_sizes);
-      string image_path = fmt::format("../static/demo_{}.jpg", video_frame_num_);
-      int ret = stbi_write_jpg(image_path.c_str(), frame->width, frame->height, 3,
-                               video_target_pixel_.data(), 80);
-      if (ret != 1) {
-        fmt::print(stderr, "stbi_write_jpg {} failed, ret {}\n", image_path, ret);
-      }
+  if (video_frame_num_ % 1000 == 0) {
+    sws_scale(sws_ctx_, frame->data, frame->linesize, 0, frame->height, video_target_pixel_ptr,
+              video_target_pixel_line_sizes);
+    string image_path = fmt::format("../static/demo_{}.jpg", video_frame_num_);
+    int ret = stbi_write_jpg(image_path.c_str(), frame->width, frame->height, 3,
+                             video_target_pixel_.data(), 80);
+    if (ret != 1) {
+      fmt::print(stderr, "stbi_write_jpg {} failed, ret {}\n", image_path, ret);
     }
-    video_frame_num_++;
   }
 }
 

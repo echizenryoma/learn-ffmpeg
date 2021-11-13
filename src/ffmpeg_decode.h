@@ -22,6 +22,8 @@ class FFmpegDecode {
   void SetVideoTargetPixelFormat(AVPixelFormat pixel_format);
 
   int Init();
+  
+  void SaveVideoStream(const string& target_path);
 
   void DecodeAv();
 
@@ -31,12 +33,11 @@ class FFmpegDecode {
   int InitAvFrame();
   int InitSwsCtx();
 
-  void DecadeVideoFrame(AVFrame* frame);
+  void DecodeVideoFrame(AVFrame* frame);
+  void SaveVideoPixel(AVFrame* frame);
 
  private:
   string av_path_;
-  bool is_init_ = false;
-  int init_ret_ = 0;
 
   shared_ptr<AVFormatContext> av_ctx_;
   shared_ptr<AVFrame> video_frame_;

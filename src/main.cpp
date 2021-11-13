@@ -11,6 +11,8 @@ int main() {
   if (ret != 0) {
     return ret;
   }
-  ffmpeg_decode.DecodeAv();
+  //ffmpeg_decode.DecodeAv();
+  string video_path = "../static/demo.h264";
+  ffmpeg_decode.SaveVideoStream(video_path);
   return 0;
 }

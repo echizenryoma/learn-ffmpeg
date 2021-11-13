@@ -1,9 +1,12 @@
 #include "sdl_player.h"
 
-#include <SDL_render.h>
-#include <spdlog/spdlog.h>
-
 #include "spdlog/spdlog.h"
+
+extern "C" {
+#include "SDL2/SDL.h"
+#include "SDL2/SDL_main.h"
+}
+
 
 namespace ryoma {
 

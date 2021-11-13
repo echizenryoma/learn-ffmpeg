@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "sdl_player.h"
+
 extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
@@ -26,7 +28,7 @@ class FFmpegDecode {
   void SaveVideoStream(const string& target_path);
   void ExportYuv420(const string& target_path);
   void DecimatedFrame(const string& target_dir);
-  void Play();
+  void Play(ryoma::SdlPlayer& player);
 
  private:
   int InitAvCtx();

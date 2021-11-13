@@ -24,7 +24,7 @@ int main() {
   string video_path = "../static/demo.h264";
   ffmpeg_decode.SaveVideoStream(video_path);
   */
-
-  ffmpeg_decode.Play();
+  ryoma::SdlPlayer player;
+  ffmpeg_decode.Play(player);
   return 0;
 }

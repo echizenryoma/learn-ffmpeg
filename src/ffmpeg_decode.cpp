@@ -4,7 +4,6 @@
 #include <thread>
 
 #include "fmt/printf.h"
-#include "sdl_player.h"
 #include "spdlog/spdlog.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -131,10 +130,7 @@ void FFmpegDecode::DecimatedFrame(const string& target_dir) {
   }
 }
 
-void FFmpegDecode::Play() {
-  ryoma::SdlPlayer player;
-
-
+void FFmpegDecode::Play(ryoma::SdlPlayer& player) {
   ResetAvStream();
   int video_width = video_codec_ctx_->width;
   int video_height = video_codec_ctx_->height;

@@ -134,25 +134,22 @@ int FFmpegDecoder::GetNextFrame(AVFrame*& frame) {
   frame = nullptr;
 
   AVPacket av_packet;
-  int ret = av_read_frame(av_ctx_.get(), &av_packet);
-  if (ret < 0) {
-    spdlog::error("av_read_frame failed, ret {}", ret);
-    return ret;
-  }
-
-  if (av_packet.stream_index == video_stream_->index) {
-    ret = avcodec_send_packet(video_codec_ctx_.get(), &av_packet);
-    if (ret < 0) {
-      spdlog::error("avcodec_send_packet failed, ret {}", ret);
-      return ret;
+  while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
+    if (av_packet.stream_index == video_stream_->index) {
+      int ret = avcodec_send_packet(video_codec_ctx_.get(), &av_packet);
+      if (ret < 0) {
+        spdlog::error("avcodec_send_packet failed, ret {}", ret);
+        continue;
+      }
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), av_frame_.get());
+      if (ret < 0) {
+        spdlog::error("avcodec_receive_frame failed, ret {}", ret);
+        continue;
+      }
+      video_frame_num_++;
+      frame = av_frame_.get();
+      break;
     }
-    ret = avcodec_receive_frame(video_codec_ctx_.get(), av_frame_.get());
-    if (ret < 0) {
-      spdlog::error("avcodec_receive_frame failed, ret {}", ret);
-      return 1;
-    }
-    video_frame_num_++;
-    frame = av_frame_.get();
   }
   return 0;
 }

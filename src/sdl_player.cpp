@@ -1,5 +1,8 @@
 #include "sdl_player.h"
 
+#include <SDL_timer.h>
+#include <spdlog/spdlog.h>
+
 #include "spdlog/spdlog.h"
 
 extern "C" {
@@ -9,8 +12,7 @@ extern "C" {
 
 namespace ryoma {
 
-atomic<bool> SdlPlayer::exit_{false};
-atomic<bool> SdlPlayer::pause_{false};
+SdlPlayer::RefreshData SdlPlayer::refresh_data_;
 
 SdlPlayer::~SdlPlayer() { SDL_Quit(); }
 
@@ -59,6 +61,7 @@ int SdlPlayer::Init(int width, int height, const string& title) {
 int SdlPlayer::Play(ryoma::FFmpegDecoder& ffmpeg_decoder) {
   auto* video_codec_ctx = ffmpeg_decoder.GetVideoCodecCtx();
   Init(video_codec_ctx->width, video_codec_ctx->height, "Simple Video Player");
+  refresh_data_.delay_ms.store(video_codec_ctx->delay);
 
   ffmpeg_decoder.ResetAvStream();
 
@@ -70,27 +73,24 @@ int SdlPlayer::Play(ryoma::FFmpegDecoder& ffmpeg_decoder) {
     switch (event.type) {
       case SDL_KEYDOWN:
         if (event.key.keysym.sym == SDLK_SPACE) {
-          pause_.store(!pause_);
+          refresh_data_.pause.store(!refresh_data_.pause);
         }
         break;
       case SDL_QUIT:
-        exit_.store(true);
+        refresh_data_.exit.store(true);
         is_loop = false;
         break;
 
       case SDL_PALYER_EVENT_REFRESH: {
         int ret = ffmpeg_decoder.GetNextFrame(frame);
         if (ret < 0) {
-          exit_.store(true);
-          is_loop = false;
           break;
         }
-
         if (frame == nullptr) {
           break;
         }
-
-        RendererFrame(frame, frame->pkt_duration);
+        refresh_data_.delay_ms.store(frame->pkt_duration);
+        RendererFrame(frame);
         break;
       }
       case SDL_PALYER_EVENT_STOP:
@@ -104,21 +104,21 @@ int SdlPlayer::Play(ryoma::FFmpegDecoder& ffmpeg_decoder) {
   return 0;
 }
 
-void SdlPlayer::RendererFrame(AVFrame* frame, uint32_t delay) {
+void SdlPlayer::RendererFrame(AVFrame* frame) {
   SDL_UpdateYUVTexture(texture_.get(), &rect_, frame->data[0], frame->linesize[0], frame->data[1],
                        frame->linesize[1], frame->data[2], frame->linesize[2]);
   SDL_RenderClear(renderer_.get());
   SDL_RenderCopy(renderer_.get(), texture_.get(), nullptr, &rect_);
   SDL_RenderPresent(renderer_.get());
-  SDL_Delay(delay);
 }
 
 int SdlPlayer::Refresh(void* data) {
   SDL_Event event;
-  while (!exit_) {
-    if (!pause_) {
+  while (!refresh_data_.exit) {
+    if (!refresh_data_.pause) {
       event.type = SDL_PALYER_EVENT_REFRESH;
       SDL_PushEvent(&event);
+      SDL_Delay(refresh_data_.delay_ms);
     }
   }
   event.type = SDL_PALYER_EVENT_STOP;

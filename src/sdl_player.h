@@ -1,8 +1,9 @@
 #pragma once
 
-#include <atomic>
+#include <cstdint>
 #define SDL_MAIN_HANDLED
 
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -19,11 +20,18 @@ using namespace std;
 namespace ryoma {
 
 enum SdlPlayerEventType {
-  SDL_PALYER_EVENT_REFRESH = 1,
+  SDL_PALYER_EVENT_REFRESH = 10,
   SDL_PALYER_EVENT_STOP,
 };
 
 class SdlPlayer {
+ public:
+  struct RefreshData {
+    atomic<bool> exit;
+    atomic<bool> pause;
+    atomic<uint32_t> delay_ms;
+  };
+
  public:
   ~SdlPlayer();
 
@@ -33,7 +41,7 @@ class SdlPlayer {
   static int Refresh(void* data);
 
   int Init(int width, int height, const string& title);
-  void RendererFrame(AVFrame* frame, uint32_t delay);
+  void RendererFrame(AVFrame* frame);
 
  private:
   shared_ptr<SDL_Window> window_;
@@ -41,8 +49,7 @@ class SdlPlayer {
   shared_ptr<SDL_Texture> texture_;
   SDL_Rect rect_;
 
-  static atomic<bool> exit_;
-  static atomic<bool> pause_;
+  static RefreshData refresh_data_;
 };
 
 }  // namespace ryoma

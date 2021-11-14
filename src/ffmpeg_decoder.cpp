@@ -1,4 +1,4 @@
-#include "ffmpeg_decode.h"
+#include "ffmpeg_decoder.h"
 
 #include <fstream>
 #include <thread>
@@ -13,13 +13,13 @@
 
 namespace ryoma {
 
-FFmpegDecode::FFmpegDecode(const string& av_path) : av_path_(av_path) {}
+FFmpegDecoder::FFmpegDecoder(const string& av_path) : av_path_(av_path) {}
 
-void FFmpegDecode::SetVideoTargetPixelFormat(AVPixelFormat pixel_format) {
+void FFmpegDecoder::SetVideoTargetPixelFormat(AVPixelFormat pixel_format) {
   video_target_pixel_format_ = pixel_format;
 }
 
-int FFmpegDecode::Init() {
+int FFmpegDecoder::Init() {
   int ret = InitAvCtx();
   if (ret != 0) {
     spdlog::error("InitAvCtx failed, ret {}", ret);
@@ -40,7 +40,7 @@ int FFmpegDecode::Init() {
   return 0;
 }
 
-void FFmpegDecode::SaveVideoStream(const string& target_path) {
+void FFmpegDecoder::SaveVideoStream(const string& target_path) {
   ResetAvStream();
   AVFormatContext* target_ctx_ptr = nullptr;
   int ret = avformat_alloc_output_context2(&target_ctx_ptr, NULL, NULL, target_path.c_str());
@@ -72,7 +72,7 @@ void FFmpegDecode::SaveVideoStream(const string& target_path) {
   av_write_trailer(target_ctx.get());
 }
 
-void FFmpegDecode::ExportYuv420(const string& prefix_path) {
+void FFmpegDecoder::ExportYuv420(const string& prefix_path) {
   ResetAvStream();
   ofstream fout(prefix_path, ios::out | ios::trunc | ios::binary);
 
@@ -90,12 +90,12 @@ void FFmpegDecode::ExportYuv420(const string& prefix_path) {
       if (av_packet.size <= 0) {
         continue;
       }
-      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), av_frame_.get());
       if (ret == 0) {
         // yuv420: yyyyyyyyuuvv|yyyyyyyyuuvv
-        fout.write(reinterpret_cast<char*>(video_frame_->data[0]), pixel_size);
-        fout.write(reinterpret_cast<char*>(video_frame_->data[1]), pixel_size / 4);
-        fout.write(reinterpret_cast<char*>(video_frame_->data[2]), pixel_size / 4);
+        fout.write(reinterpret_cast<char*>(av_frame_->data[0]), pixel_size);
+        fout.write(reinterpret_cast<char*>(av_frame_->data[1]), pixel_size / 4);
+        fout.write(reinterpret_cast<char*>(av_frame_->data[2]), pixel_size / 4);
         video_frame_num_++;
       }
     }
@@ -103,7 +103,7 @@ void FFmpegDecode::ExportYuv420(const string& prefix_path) {
   fout.close();
 }
 
-void FFmpegDecode::DecimatedFrame(const string& target_dir) {
+void FFmpegDecoder::DecimatedFrame(const string& target_dir) {
   ResetAvStream();
   int ret = InitSwsCtx();
   if (ret != 0) {
@@ -121,43 +121,45 @@ void FFmpegDecode::DecimatedFrame(const string& target_dir) {
       if (av_packet.size <= 0) {
         continue;
       }
-      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), av_frame_.get());
       if (ret == 0) {
-        SaveVideoPixel(target_dir, video_frame_.get());
+        SaveVideoPixel(target_dir, av_frame_.get());
         video_frame_num_++;
       }
     }
   }
 }
 
-void FFmpegDecode::Play(ryoma::SdlPlayer& player) {
-  ResetAvStream();
-  int video_width = video_codec_ctx_->width;
-  int video_height = video_codec_ctx_->height;
-  int pixel_size = video_width * video_height;
-
-  player.Init(video_width, video_height, "Simple Video Player");
+int FFmpegDecoder::GetNextFrame(AVFrame*& frame) {
+  frame = nullptr;
 
   AVPacket av_packet;
-  while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
-    if (av_packet.stream_index == video_stream_->index) {
-      int ret = avcodec_send_packet(video_codec_ctx_.get(), &av_packet);
-      if (ret < 0) {
-        continue;
-      }
-      if (av_packet.size <= 0) {
-        continue;
-      }
-      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
-      if (ret == 0) {
-        player.RendererFrame(video_frame_.get(), 41);
-        video_frame_num_++;
-      }
-    }
+  int ret = av_read_frame(av_ctx_.get(), &av_packet);
+  if (ret < 0) {
+    spdlog::error("av_read_frame failed, ret {}", ret);
+    return ret;
   }
+
+  if (av_packet.stream_index == video_stream_->index) {
+    ret = avcodec_send_packet(video_codec_ctx_.get(), &av_packet);
+    if (ret < 0) {
+      spdlog::error("avcodec_send_packet failed, ret {}", ret);
+      return ret;
+    }
+    ret = avcodec_receive_frame(video_codec_ctx_.get(), av_frame_.get());
+    if (ret < 0) {
+      spdlog::error("avcodec_receive_frame failed, ret {}", ret);
+      return 1;
+    }
+    video_frame_num_++;
+    frame = av_frame_.get();
+  }
+  return 0;
 }
 
-int FFmpegDecode::InitAvCtx() {
+const AVCodecContext* FFmpegDecoder::GetVideoCodecCtx() const { return video_codec_ctx_.get(); }
+
+int FFmpegDecoder::InitAvCtx() {
   const auto& path = av_path_;
 
   AVFormatContext* av_ctx_ptr = nullptr;
@@ -170,7 +172,7 @@ int FFmpegDecode::InitAvCtx() {
   return 0;
 }
 
-int FFmpegDecode::InitAvCodecCtx() {
+int FFmpegDecoder::InitAvCodecCtx() {
   av_dump_format(av_ctx_.get(), 0, av_ctx_->url, 0);
   int ret = avformat_find_stream_info(av_ctx_.get(), nullptr);
   if (ret < 0) {
@@ -209,8 +211,8 @@ int FFmpegDecode::InitAvCodecCtx() {
   return 0;
 }
 
-int FFmpegDecode::InitAvFrame() {
-  video_frame_.reset(av_frame_alloc(), [](AVFrame*& ptr) { av_frame_free(&ptr); });
+int FFmpegDecoder::InitAvFrame() {
+  av_frame_.reset(av_frame_alloc(), [](AVFrame*& ptr) { av_frame_free(&ptr); });
   video_target_pixel_size_ =
       av_image_get_buffer_size(video_target_pixel_format_, video_stream_->codecpar->width,
                                video_stream_->codecpar->height, 1);
@@ -218,7 +220,7 @@ int FFmpegDecode::InitAvFrame() {
   return 0;
 }
 
-int FFmpegDecode::InitSwsCtx() {
+int FFmpegDecoder::InitSwsCtx() {
   sws_ctx_ = sws_getCachedContext(nullptr, video_stream_->codecpar->width,
                                   video_stream_->codecpar->height, video_codec_ctx_->pix_fmt,
                                   video_stream_->codecpar->width, video_stream_->codecpar->height,
@@ -226,7 +228,7 @@ int FFmpegDecode::InitSwsCtx() {
   return 0;
 }
 
-void FFmpegDecode::ResetAvStream() {
+void FFmpegDecoder::ResetAvStream() {
   avio_seek(av_ctx_->pb, 0, SEEK_SET);
   int ret = avformat_seek_file(av_ctx_.get(), video_stream_->index, 0, 0, INT64_MAX,
                                AVSEEK_FLAG_BACKWARD);
@@ -236,7 +238,7 @@ void FFmpegDecode::ResetAvStream() {
   }
 }
 
-void FFmpegDecode::SaveVideoPixel(const string& target_dir, AVFrame* frame) {
+void FFmpegDecoder::SaveVideoPixel(const string& target_dir, AVFrame* frame) {
   uint8_t* video_target_pixel_ptr[] = {video_target_pixel_.data()};
   int video_target_pixel_line_sizes[] = {video_codec_ctx_->width * 3};
   if (video_frame_num_ % 100 == 0) {

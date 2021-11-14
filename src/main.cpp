@@ -1,6 +1,7 @@
 #include <string>
 
-#include "ffmpeg_decode.h"
+#include "ffmpeg_decoder.h"
+#include "sdl_player.h"
 #include "spdlog/spdlog.h"
 
 using namespace std;
@@ -9,10 +10,10 @@ int main() {
   ios_base::sync_with_stdio(false);
 
   string av_path = "../static/demo.mkv";
-  ryoma::FFmpegDecode ffmpeg_decode(av_path);
-  int ret = ffmpeg_decode.Init();
+  ryoma::FFmpegDecoder ffmpeg_decoder(av_path);
+  int ret = ffmpeg_decoder.Init();
   if (ret != 0) {
-    spdlog::error("FFmpegDecode::Init failed, ret {}", ret);
+    spdlog::error("FFmpegDecoder::Init failed, ret {}", ret);
     return ret;
   }
   /*
@@ -24,7 +25,8 @@ int main() {
   string video_path = "../static/demo.h264";
   ffmpeg_decode.SaveVideoStream(video_path);
   */
+
   ryoma::SdlPlayer player;
-  ffmpeg_decode.Play(player);
+  player.Play(ffmpeg_decoder);
   return 0;
 }

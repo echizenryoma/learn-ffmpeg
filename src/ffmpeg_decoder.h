@@ -4,8 +4,6 @@
 #include <string>
 #include <vector>
 
-#include "sdl_player.h"
-
 extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
@@ -17,9 +15,9 @@ using namespace std;
 
 namespace ryoma {
 
-class FFmpegDecode {
+class FFmpegDecoder {
  public:
-  explicit FFmpegDecode(const string& av_path);
+  explicit FFmpegDecoder(const string& av_path);
 
   void SetVideoTargetPixelFormat(AVPixelFormat pixel_format);
 
@@ -28,7 +26,12 @@ class FFmpegDecode {
   void SaveVideoStream(const string& target_path);
   void ExportYuv420(const string& target_path);
   void DecimatedFrame(const string& target_dir);
-  void Play(ryoma::SdlPlayer& player);
+
+  int GetNextFrame(AVFrame*& frame);
+
+  const AVCodecContext* GetVideoCodecCtx() const;
+
+  void ResetAvStream();
 
  private:
   int InitAvCtx();
@@ -36,15 +39,13 @@ class FFmpegDecode {
   int InitAvFrame();
   int InitSwsCtx();
 
-  void ResetAvStream();
-
   void SaveVideoPixel(const string& target_dir, AVFrame* frame);
 
  private:
   string av_path_;
 
   shared_ptr<AVFormatContext> av_ctx_;
-  shared_ptr<AVFrame> video_frame_;
+  shared_ptr<AVFrame> av_frame_;
   shared_ptr<AVCodecContext> video_codec_ctx_;
   AVStream* video_stream_ = nullptr;
   size_t video_frame_num_ = 0;

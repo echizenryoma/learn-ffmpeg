@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.8)
 
 project("learn-ffmpeg")
 # link_libraries("-static")
@@ -18,7 +18,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(fmt CONFIG)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SDL2 CONFIG REQUIRED)
-find_package(FFmpeg REQUIRED COMPONENTS AVCODEC AVFORMAT AVUTIL SWSCALE)
+
+find_package(FFMPEG REQUIRED COMPONENTS AVCODEC AVFORMAT AVUTIL SWSCALE)
 if(FFMPEG_FOUND)
     message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
     include_directories(${FFMPEG_INCLUDE_DIRS})

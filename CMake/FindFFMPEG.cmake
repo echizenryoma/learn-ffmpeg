@@ -31,9 +31,11 @@
 
 include(FindPackageHandleStandardArgs)
 
+set(FFMPEG_LIBRARIES "")
+
 # The default components were taken from a survey over other FindFFMPEG.cmake files
-if (NOT FFmpeg_FIND_COMPONENTS)
-  set(FFmpeg_FIND_COMPONENTS AVCODEC AVFORMAT AVUTIL)
+if (NOT FFMPEG_FIND_COMPONENTS)
+  set(FFMPEG_FIND_COMPONENTS AVCODEC AVFORMAT AVUTIL)
 endif ()
 
 #
@@ -94,7 +96,7 @@ macro(find_component _component _pkgconfig _library _header)
 
 endmacro()
 
-
+message("FFMPEG_LIBRARIES: ${FFMPEG_LIBRARIES}")
 # Check for cached results. If there are skip the costly part.
 if (NOT FFMPEG_LIBRARIES)
 
@@ -109,7 +111,7 @@ if (NOT FFMPEG_LIBRARIES)
   find_component(SWRESAMPLE libswresample swresample libswresample/swresample.h)
 
   # Check if the required components were found and add their stuff to the FFMPEG_* vars.
-  foreach (_component ${FFmpeg_FIND_COMPONENTS})
+  foreach (_component ${FFMPEG_FIND_COMPONENTS})
     if (${_component}_FOUND)
       # message(STATUS "Required component ${_component} present.")
       set(FFMPEG_LIBRARIES   ${FFMPEG_LIBRARIES}   ${${_component}_LIBRARIES})
@@ -142,10 +144,10 @@ foreach (_component AVCODEC AVDEVICE AVFORMAT AVUTIL POSTPROCESS SWSCALE)
 endforeach ()
 
 # Compile the list of required vars
-set(_FFmpeg_REQUIRED_VARS FFMPEG_LIBRARIES FFMPEG_INCLUDE_DIRS)
-foreach (_component ${FFmpeg_FIND_COMPONENTS})
-  list(APPEND _FFmpeg_REQUIRED_VARS ${_component}_LIBRARIES ${_component}_INCLUDE_DIRS)
+set(_FFMPEG_REQUIRED_VARS FFMPEG_LIBRARIES FFMPEG_INCLUDE_DIRS)
+foreach (_component ${FFMPEG_FIND_COMPONENTS})
+  list(APPEND _FFMPEG_REQUIRED_VARS ${_component}_LIBRARIES ${_component}_INCLUDE_DIRS)
 endforeach ()
 
 # Give a nice error message if some of the required vars are missing.
-find_package_handle_standard_args(FFmpeg DEFAULT_MSG ${_FFmpeg_REQUIRED_VARS})
+find_package_handle_standard_args(FFMPEG DEFAULT_MSG ${_FFMPEG_REQUIRED_VARS})

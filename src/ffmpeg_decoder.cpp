@@ -5,6 +5,7 @@
 
 #include "fmt/printf.h"
 #include "spdlog/spdlog.h"
+#include "video_frame_convert.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -14,10 +15,6 @@
 namespace ryoma {
 
 FFmpegDecoder::FFmpegDecoder(const string& av_path) : av_path_(av_path) {}
-
-void FFmpegDecoder::SetVideoTargetPixelFormat(AVPixelFormat pixel_format) {
-  video_target_pixel_format_ = pixel_format;
-}
 
 int FFmpegDecoder::Init() {
   int ret = InitAvCtx();
@@ -90,12 +87,12 @@ void FFmpegDecoder::ExportYuv420(const string& prefix_path) {
       if (av_packet.size <= 0) {
         continue;
       }
-      ret = avcodec_receive_frame(video_codec_ctx_.get(), av_frame_.get());
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
       if (ret == 0) {
         // yuv420: yyyyyyyyuuvv|yyyyyyyyuuvv
-        fout.write(reinterpret_cast<char*>(av_frame_->data[0]), pixel_size);
-        fout.write(reinterpret_cast<char*>(av_frame_->data[1]), pixel_size / 4);
-        fout.write(reinterpret_cast<char*>(av_frame_->data[2]), pixel_size / 4);
+        fout.write(reinterpret_cast<char*>(video_frame_->data[0]), pixel_size);
+        fout.write(reinterpret_cast<char*>(video_frame_->data[1]), pixel_size / 4);
+        fout.write(reinterpret_cast<char*>(video_frame_->data[2]), pixel_size / 4);
         video_frame_num_++;
       }
     }
@@ -105,11 +102,7 @@ void FFmpegDecoder::ExportYuv420(const string& prefix_path) {
 
 void FFmpegDecoder::DecimatedFrame(const string& target_dir) {
   ResetAvStream();
-  int ret = InitSwsCtx();
-  if (ret != 0) {
-    spdlog::error("InitSwsCtx failed, ret {}", ret);
-    return;
-  }
+  ryoma::VideoFrameConvert video_frame_convert(video_codec_ctx_.get(), AV_PIX_FMT_RGB24);
 
   AVPacket av_packet;
   while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
@@ -121,9 +114,10 @@ void FFmpegDecoder::DecimatedFrame(const string& target_dir) {
       if (av_packet.size <= 0) {
         continue;
       }
-      ret = avcodec_receive_frame(video_codec_ctx_.get(), av_frame_.get());
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
       if (ret == 0) {
-        SaveVideoPixel(target_dir, av_frame_.get());
+        SaveVideoPixel(target_dir, video_frame_->width, video_frame_->height,
+                       video_frame_convert.ConvertToBytes(video_frame_.get()));
         video_frame_num_++;
       }
     }
@@ -141,13 +135,13 @@ int FFmpegDecoder::GetNextFrame(AVFrame*& frame) {
         spdlog::error("avcodec_send_packet failed, ret {}", ret);
         continue;
       }
-      ret = avcodec_receive_frame(video_codec_ctx_.get(), av_frame_.get());
+      ret = avcodec_receive_frame(video_codec_ctx_.get(), video_frame_.get());
       if (ret < 0) {
         spdlog::error("avcodec_receive_frame failed, ret {}", ret);
         continue;
       }
       video_frame_num_++;
-      frame = av_frame_.get();
+      frame = video_frame_.get();
       break;
     }
   }
@@ -209,19 +203,7 @@ int FFmpegDecoder::InitAvCodecCtx() {
 }
 
 int FFmpegDecoder::InitAvFrame() {
-  av_frame_.reset(av_frame_alloc(), [](AVFrame*& ptr) { av_frame_free(&ptr); });
-  video_target_pixel_size_ =
-      av_image_get_buffer_size(video_target_pixel_format_, video_stream_->codecpar->width,
-                               video_stream_->codecpar->height, 1);
-  video_target_pixel_.resize(video_target_pixel_size_);
-  return 0;
-}
-
-int FFmpegDecoder::InitSwsCtx() {
-  sws_ctx_ = sws_getCachedContext(nullptr, video_stream_->codecpar->width,
-                                  video_stream_->codecpar->height, video_codec_ctx_->pix_fmt,
-                                  video_stream_->codecpar->width, video_stream_->codecpar->height,
-                                  video_target_pixel_format_, 0, nullptr, nullptr, nullptr);
+  video_frame_.reset(av_frame_alloc(), [](AVFrame*& ptr) { av_frame_free(&ptr); });
   return 0;
 }
 
@@ -235,15 +217,12 @@ void FFmpegDecoder::ResetAvStream() {
   }
 }
 
-void FFmpegDecoder::SaveVideoPixel(const string& target_dir, AVFrame* frame) {
-  uint8_t* video_target_pixel_ptr[] = {video_target_pixel_.data()};
-  int video_target_pixel_line_sizes[] = {video_codec_ctx_->width * 3};
+void FFmpegDecoder::SaveVideoPixel(const string& target_dir, int image_width, int image_height,
+                                   const vector<uint8_t>& rgb_pixel) {
   if (video_frame_num_ % 100 == 0) {
-    sws_scale(sws_ctx_, frame->data, frame->linesize, 0, frame->height, video_target_pixel_ptr,
-              video_target_pixel_line_sizes);
     string image_path = fmt::format("{}/demo_{}.jpg", target_dir, video_frame_num_);
-    int ret = stbi_write_jpg(image_path.c_str(), frame->width, frame->height, 3,
-                             video_target_pixel_.data(), 80);
+    int ret =
+        stbi_write_jpg(image_path.c_str(), image_width, image_height, 3, rgb_pixel.data(), 80);
     if (ret < 0) {
       spdlog::error("stbi_write_jpg {} failed, ret {}", image_path, ret);
     }

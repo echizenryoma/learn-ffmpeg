@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+
 #define SDL_MAIN_HANDLED
 
 #include <atomic>
@@ -50,6 +51,10 @@ class SdlPlayer {
   SDL_Rect rect_;
 
   static RefreshData refresh_data_;
+
+  int video_target_pixel_size_ = 0;
+
+  AVPixelFormat video_target_pixel_format_ = AV_PIX_FMT_YUV420P;
 };
 
 }  // namespace ryoma

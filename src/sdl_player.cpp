@@ -1,13 +1,14 @@
 #include "sdl_player.h"
 
-#include <SDL_timer.h>
-#include <spdlog/spdlog.h>
+#include <memory>
 
 #include "spdlog/spdlog.h"
+#include "video_frame_convert.h"
 
 extern "C" {
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_main.h"
+#include "SDL2/SDL_timer.h"
 }
 
 namespace ryoma {
@@ -64,6 +65,7 @@ int SdlPlayer::Play(ryoma::FFmpegDecoder& ffmpeg_decoder) {
   refresh_data_.delay_ms.store(video_codec_ctx->delay);
 
   ffmpeg_decoder.ResetAvStream();
+  ryoma::VideoFrameConvert video_frame_convert(video_codec_ctx, AV_PIX_FMT_YUV420P);
 
   SDL_Event event;
   bool is_loop = true;
@@ -90,7 +92,7 @@ int SdlPlayer::Play(ryoma::FFmpegDecoder& ffmpeg_decoder) {
           break;
         }
         refresh_data_.delay_ms.store(frame->pkt_duration);
-        RendererFrame(frame);
+        RendererFrame(video_frame_convert.Convert(frame));
         break;
       }
       case SDL_PALYER_EVENT_STOP:

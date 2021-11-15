@@ -16,17 +16,15 @@ int main() {
     spdlog::error("FFmpegDecoder::Init failed, ret {}", ret);
     return ret;
   }
-  /*
-  string yuv_path = "../static/demo_1280x720.yuv";
-  ffmpeg_decode.ExportYuv420(yuv_path);
+  // string yuv_path = "../static/demo_1280x720.yuv";
+  // ffmpeg_decoder.ExportYuv420(yuv_path);
 
-  ffmpeg_decode.DecimatedFrame("../static");
+  ffmpeg_decoder.DecimatedFrame("../static");
 
-  string video_path = "../static/demo.h264";
-  ffmpeg_decode.SaveVideoStream(video_path);
-  */
+  // string video_path = "../static/demo.h264";
+  // ffmpeg_decoder.SaveVideoStream(video_path);
 
-  ryoma::SdlPlayer player;
-  player.Play(ffmpeg_decoder);
+  // ryoma::SdlPlayer player;
+  // player.Play(ffmpeg_decoder);
   return 0;
 }

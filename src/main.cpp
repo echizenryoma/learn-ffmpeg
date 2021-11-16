@@ -19,10 +19,13 @@ int main() {
   // string yuv_path = "../static/demo_1280x720.yuv";
   // ffmpeg_decoder.ExportYuv420(yuv_path);
 
-  ffmpeg_decoder.DecimatedFrame("../static");
+  // ffmpeg_decoder.DecimatedFrame("../static");
 
   // string video_path = "../static/demo.h264";
   // ffmpeg_decoder.SaveVideoStream(video_path);
+
+  string audio_path = "../static/demo.aac";
+  ffmpeg_decoder.SaveAudioStream(audio_path);
 
   // ryoma::SdlPlayer player;
   // player.Play(ffmpeg_decoder);

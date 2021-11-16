@@ -22,6 +22,7 @@ class FFmpegDecoder {
   int Init();
 
   void SaveVideoStream(const string& target_path);
+  void SaveAudioStream(const string& target_path);
   void ExportYuv420(const string& target_path);
   void DecimatedFrame(const string& target_dir);
 
@@ -33,7 +34,11 @@ class FFmpegDecoder {
 
  private:
   int InitAvCtx();
+
   int InitAvCodecCtx();
+  int InitVideoCodecCtx();
+  int InitAudioCodecCtx();
+
   int InitAvFrame();
   int InitSwsCtx();
 
@@ -48,6 +53,11 @@ class FFmpegDecoder {
   shared_ptr<AVCodecContext> video_codec_ctx_;
   AVStream* video_stream_ = nullptr;
   size_t video_frame_num_ = 0;
+
+  shared_ptr<AVFrame> audio_frame_;
+  shared_ptr<AVCodecContext> audio_codec_ctx_;
+  AVStream* audio_stream_ = nullptr;
+  size_t audio_frame_num_ = 0;
 };
 
 }  // namespace ryoma

@@ -1,5 +1,7 @@
 #include "ffmpeg_decoder.h"
 
+#include <libavutil/avutil.h>
+
 #include <fstream>
 #include <thread>
 
@@ -63,6 +65,39 @@ void FFmpegDecoder::SaveVideoStream(const string& target_path) {
   AVPacket av_packet;
   while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
     if (av_packet.stream_index == video_stream_->index) {
+      av_interleaved_write_frame(target_ctx.get(), &av_packet);
+    }
+  }
+  av_write_trailer(target_ctx.get());
+}
+
+void FFmpegDecoder::SaveAudioStream(const string& target_path) {
+  ResetAvStream();
+  AVFormatContext* target_ctx_ptr = nullptr;
+  int ret = avformat_alloc_output_context2(&target_ctx_ptr, nullptr, nullptr, target_path.c_str());
+  if (ret != 0) {
+    spdlog::error("avformat_alloc_output_context2 failed, path {} ret {}", target_path, ret);
+    return;
+  }
+  shared_ptr<AVFormatContext> target_ctx(target_ctx_ptr,
+                                         [](AVFormatContext*& ptr) { avformat_close_input(&ptr); });
+  AVStream* audio_target_stream = avformat_new_stream(target_ctx.get(), nullptr);
+  avio_open(&target_ctx->pb, target_ctx->url, AVIO_FLAG_WRITE);
+
+  audio_target_stream->time_base = audio_stream_->time_base;
+  avcodec_parameters_copy(audio_target_stream->codecpar, audio_stream_->codecpar);
+
+  ret = avformat_write_header(target_ctx.get(), nullptr);
+  if (ret < 0) {
+    spdlog::error("avformat_write_header failed, ret {}", ret);
+    return;
+  }
+  av_dump_format(target_ctx.get(), 0, target_ctx->url, 1);
+
+  AVPacket av_packet;
+  while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
+    if (av_packet.stream_index == audio_stream_->index) {
+      av_packet.stream_index = 0;
       av_interleaved_write_frame(target_ctx.get(), &av_packet);
     }
   }
@@ -171,7 +206,23 @@ int FFmpegDecoder::InitAvCodecCtx() {
     return ret;
   }
 
-  int video_stream_index = av_find_best_stream(av_ctx_.get(), AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+  ret = InitVideoCodecCtx();
+  if (ret < 0) {
+    spdlog::error("InitVideoCodecCtx failed, ret {}", ret);
+    return ret;
+  }
+
+  ret = InitAudioCodecCtx();
+  if (ret < 0) {
+    spdlog::error("InitVideoCodecCtx failed, ret {}", ret);
+    return ret;
+  }
+  return 0;
+}
+
+int FFmpegDecoder::InitVideoCodecCtx() {
+  int video_stream_index =
+      av_find_best_stream(av_ctx_.get(), AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
   if (video_stream_index == AVERROR_STREAM_NOT_FOUND) {
     spdlog::error("not found video stream");
     return AVERROR_STREAM_NOT_FOUND;
@@ -188,7 +239,7 @@ int FFmpegDecoder::InitAvCodecCtx() {
     spdlog::error("not found video decodec context");
     return -1;
   }
-  ret = avcodec_parameters_to_context(video_codec_ctx_.get(), video_stream_->codecpar);
+  int ret = avcodec_parameters_to_context(video_codec_ctx_.get(), video_stream_->codecpar);
   video_codec_ctx_->thread_count = std::thread::hardware_concurrency();
   if (ret < 0) {
     spdlog::error("avcodec_parameters_to_context failed, ret {}", ret);
@@ -202,8 +253,42 @@ int FFmpegDecoder::InitAvCodecCtx() {
   return 0;
 }
 
+int FFmpegDecoder::InitAudioCodecCtx() {
+  int audio_stream_index =
+      av_find_best_stream(av_ctx_.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+  if (audio_stream_index == AVERROR_STREAM_NOT_FOUND) {
+    spdlog::error("not found audio stream");
+    return AVERROR_STREAM_NOT_FOUND;
+  }
+  audio_stream_ = av_ctx_->streams[audio_stream_index];
+  auto* audio_codec = avcodec_find_decoder(audio_stream_->codecpar->codec_id);
+  if (audio_codec == nullptr) {
+    spdlog::error("not found audio codec, codec_id {}", audio_stream_->codecpar->codec_id);
+    return -1;
+  }
+  audio_codec_ctx_.reset(avcodec_alloc_context3(audio_codec),
+                         [](AVCodecContext*& ptr) { avcodec_free_context(&ptr); });
+  if (audio_codec_ctx_ == nullptr) {
+    spdlog::error("not found audio decodec context");
+    return -1;
+  }
+  int ret = avcodec_parameters_to_context(audio_codec_ctx_.get(), audio_stream_->codecpar);
+  audio_codec_ctx_->thread_count = std::thread::hardware_concurrency();
+  if (ret < 0) {
+    spdlog::error("avcodec_parameters_to_context failed, ret {}", ret);
+    return ret;
+  }
+  ret = avcodec_open2(audio_codec_ctx_.get(), audio_codec, nullptr);
+  if (ret < 0) {
+    spdlog::error("avcodec_open2 failed, ret {}", ret);
+    return ret;
+  }
+  return 0;
+}
+
 int FFmpegDecoder::InitAvFrame() {
   video_frame_.reset(av_frame_alloc(), [](AVFrame*& ptr) { av_frame_free(&ptr); });
+  audio_frame_.reset(av_frame_alloc(), [](AVFrame*& ptr) { av_frame_free(&ptr); });
   return 0;
 }
 

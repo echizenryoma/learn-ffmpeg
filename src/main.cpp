@@ -24,10 +24,11 @@ int main() {
   // string video_path = "../static/demo.h264";
   // ffmpeg_decoder.SaveVideoStream(video_path);
 
-  string audio_path = "../static/demo.aac";
-  ffmpeg_decoder.SaveAudioStream(audio_path);
+  // string audio_path = "../static/dem/*o.aac";
+  // ffmpeg_decoder.SaveAudioStream(audio_path);
 
-  // ryoma::SdlPlayer player;
-  // player.Play(ffmpeg_decoder);
+  ryoma::SdlPlayer player;
+  player.Init("Simple video player", &ffmpeg_decoder);
+  player.Play();
   return 0;
 }

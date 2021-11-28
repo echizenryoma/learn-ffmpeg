@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <queue>
 #include <vector>
 
 extern "C" {
@@ -28,7 +29,8 @@ class FFmpegDecoder {
 
   int GetNextFrame(AVFrame*& frame);
 
-  const AVCodecContext* GetVideoCodecCtx() const;
+  AVCodecContext* GetVideoCodecCtx();
+  AVCodecContext* GetAudioCodecCtx();
 
   void ResetAvStream();
 
@@ -40,7 +42,6 @@ class FFmpegDecoder {
   int InitAudioCodecCtx();
 
   int InitAvFrame();
-  int InitSwsCtx();
 
   void SaveVideoPixel(const string& target_dir, int image_width, int image_height,
                       const vector<uint8_t>& rgb_pixel);
@@ -58,6 +59,9 @@ class FFmpegDecoder {
   shared_ptr<AVCodecContext> audio_codec_ctx_;
   AVStream* audio_stream_ = nullptr;
   size_t audio_frame_num_ = 0;
+
+  static constexpr size_t kMaxAudioFrameBufferSize = 192000;
+  vector<uint8_t> audio_frame_buff_;
 };
 
 }  // namespace ryoma

@@ -36,13 +36,17 @@ class SdlPlayer {
  public:
   ~SdlPlayer();
 
-  int Play(ryoma::FFmpegDecoder& ffmpeg_decoder);
+  int Init(const string& title, ryoma::FFmpegDecoder* ffmpeg_decoder);
+
+  int Play();
 
  private:
   static int Refresh(void* data);
 
-  int Init(int width, int height, const string& title);
   void RendererFrame(AVFrame* frame);
+
+  void PlayAudioFrame(const vector<uint8_t>& audio_data);
+  static void FillAudio(void* data, Uint8* stream, int len);
 
  private:
   shared_ptr<SDL_Window> window_;
@@ -50,11 +54,19 @@ class SdlPlayer {
   shared_ptr<SDL_Texture> texture_;
   SDL_Rect rect_;
 
+  SDL_AudioDeviceID audio_dev_;
+  SDL_AudioSpec audio_wanted_spec_;
+
   static RefreshData refresh_data_;
 
   int video_target_pixel_size_ = 0;
 
   AVPixelFormat video_target_pixel_format_ = AV_PIX_FMT_YUV420P;
+
+  ryoma::FFmpegDecoder* ffmpeg_decoder_ = nullptr;
+
+  static atomic<int> audio_len_;
+  static atomic<const Uint8*> audio_data_;
 };
 
 }  // namespace ryoma

@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "audio_frame_resample.h"
 #include "spdlog/spdlog.h"
 #include "video_frame_convert.h"
 
@@ -15,14 +16,32 @@ namespace ryoma {
 
 SdlPlayer::RefreshData SdlPlayer::refresh_data_;
 
-SdlPlayer::~SdlPlayer() { SDL_Quit(); }
+atomic<int> SdlPlayer::audio_len_{0};
+atomic<const Uint8*> SdlPlayer::audio_data_{nullptr};
 
-int SdlPlayer::Init(int width, int height, const string& title) {
+SdlPlayer::~SdlPlayer() {
+  SDL_CloseAudio();
+  SDL_Quit();
+}
+
+int SdlPlayer::Init(const string& title, ryoma::FFmpegDecoder* ffmpeg_decoder) {
+  if (ffmpeg_decoder == nullptr) {
+    spdlog::error("ffmpeg_decoder is nullptr");
+    return -1;
+  }
+  ffmpeg_decoder_ = ffmpeg_decoder;
+
   int ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER);
   if (ret < 0) {
     spdlog::error("Could not initialize SDL, ret {}", SDL_GetError());
     return -1;
   }
+
+  auto* video_codec_ctx = ffmpeg_decoder->GetVideoCodecCtx();
+  auto* audio_codec_ctx = ffmpeg_decoder->GetAudioCodecCtx();
+
+  int width = video_codec_ctx->width;
+  int height = video_codec_ctx->height;
 
   window_.reset(SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                  width, height, SDL_WINDOW_OPENGL),
@@ -56,16 +75,32 @@ int SdlPlayer::Init(int width, int height, const string& title) {
     spdlog::error("SDL_CreateThread: {}", SDL_GetError());
     return -1;
   }
+
+  audio_wanted_spec_.freq = audio_codec_ctx->sample_rate;
+  audio_wanted_spec_.channels = audio_codec_ctx->channels;
+  audio_wanted_spec_.format = AUDIO_S16SYS;
+  audio_wanted_spec_.silence = 0;
+  audio_wanted_spec_.samples = audio_codec_ctx->frame_size;
+  audio_wanted_spec_.callback = FillAudio;
+  audio_wanted_spec_.userdata = reinterpret_cast<void*>(audio_codec_ctx);
+  ret = SDL_OpenAudio(&audio_wanted_spec_, nullptr);
+  if (ret < 0) {
+    spdlog::error("SDL_OpenAudio: {}", SDL_GetError());
+    return -1;
+  }
+
   return 0;
 }
 
-int SdlPlayer::Play(ryoma::FFmpegDecoder& ffmpeg_decoder) {
-  auto* video_codec_ctx = ffmpeg_decoder.GetVideoCodecCtx();
-  Init(video_codec_ctx->width, video_codec_ctx->height, "Simple Video Player");
+int SdlPlayer::Play() {
+  auto* video_codec_ctx = ffmpeg_decoder_->GetVideoCodecCtx();
+  auto* audio_codec_ctx = ffmpeg_decoder_->GetAudioCodecCtx();
   refresh_data_.delay_ms.store(video_codec_ctx->delay);
 
-  ffmpeg_decoder.ResetAvStream();
+  ffmpeg_decoder_->ResetAvStream();
   ryoma::VideoFrameConvert video_frame_convert(video_codec_ctx, AV_PIX_FMT_YUV420P);
+
+  ryoma::AudioFrameResample audio_frame_resample(audio_codec_ctx, 44100, AV_SAMPLE_FMT_S16);
 
   SDL_Event event;
   bool is_loop = true;
@@ -84,15 +119,16 @@ int SdlPlayer::Play(ryoma::FFmpegDecoder& ffmpeg_decoder) {
         break;
 
       case SDL_PALYER_EVENT_REFRESH: {
-        int ret = ffmpeg_decoder.GetNextFrame(frame);
+        int ret = ffmpeg_decoder_->GetNextFrame(frame);
         if (ret < 0) {
           break;
         }
         if (frame == nullptr) {
           break;
         }
-        refresh_data_.delay_ms.store(frame->pkt_duration);
-        RendererFrame(video_frame_convert.Convert(frame));
+         refresh_data_.delay_ms.store(frame->pkt_duration);
+        // RendererFrame(video_frame_convert.Convert(frame));
+        PlayAudioFrame(audio_frame_resample.Resample(frame));
         break;
       }
       case SDL_PALYER_EVENT_STOP:
@@ -112,6 +148,26 @@ void SdlPlayer::RendererFrame(AVFrame* frame) {
   SDL_RenderClear(renderer_.get());
   SDL_RenderCopy(renderer_.get(), texture_.get(), nullptr, &rect_);
   SDL_RenderPresent(renderer_.get());
+}
+
+void SdlPlayer::PlayAudioFrame(const vector<uint8_t>& audio_data) {
+  while (audio_len_ > 0) {
+    SDL_Delay(1);
+  }
+  audio_data_ = audio_data.data();
+  audio_len_ = audio_data.size();
+  SDL_PauseAudio(0);
+}
+
+void SdlPlayer::FillAudio(void* userdata, Uint8* stream, int len) {
+  SDL_memset(stream, 0, len);
+  if (audio_len_ == 0) {
+    return;
+  }
+  len = min(len, audio_len_.load());
+  SDL_MixAudio(stream, audio_data_, len, SDL_MIX_MAXVOLUME);
+  audio_data_ += len;
+  audio_len_ -= len;
 }
 
 int SdlPlayer::Refresh(void* data) {

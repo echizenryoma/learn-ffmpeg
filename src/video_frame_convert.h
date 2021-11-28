@@ -31,8 +31,8 @@ class VideoFrameConvert {
 
   SwsContext* sws_ctx_ = nullptr;
 
-  vector<uint8_t> target_frame_buff_;
   shared_ptr<AVFrame> target_frame_;
+  vector<uint8_t> target_frame_buff_;
 };
 
 }  // namespace ryoma

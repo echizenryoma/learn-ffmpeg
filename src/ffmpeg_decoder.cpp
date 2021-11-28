@@ -16,7 +16,9 @@
 
 namespace ryoma {
 
-FFmpegDecoder::FFmpegDecoder(const string& av_path) : av_path_(av_path) {}
+FFmpegDecoder::FFmpegDecoder(const string& av_path) : av_path_(av_path) {
+  audio_frame_buff_.resize(kMaxAudioFrameBufferSize);
+}
 
 int FFmpegDecoder::Init() {
   int ret = InitAvCtx();
@@ -164,6 +166,7 @@ int FFmpegDecoder::GetNextFrame(AVFrame*& frame) {
 
   AVPacket av_packet;
   while (av_read_frame(av_ctx_.get(), &av_packet) == 0) {
+    /*
     if (av_packet.stream_index == video_stream_->index) {
       int ret = avcodec_send_packet(video_codec_ctx_.get(), &av_packet);
       if (ret < 0) {
@@ -179,11 +182,32 @@ int FFmpegDecoder::GetNextFrame(AVFrame*& frame) {
       frame = video_frame_.get();
       break;
     }
+    */
+
+    if (av_packet.stream_index == audio_stream_->index) {
+      int ret = avcodec_send_packet(audio_codec_ctx_.get(), &av_packet);
+      if (ret < 0) {
+        spdlog::error("avcodec_send_packet failed, ret {}", ret);
+        continue;
+      }
+      ret = avcodec_receive_frame(audio_codec_ctx_.get(), audio_frame_.get());
+      if (ret < 0) {
+        spdlog::error("avcodec_receive_frame failed, ret {}", ret);
+        continue;
+      }
+      audio_frame_num_++;
+      frame = audio_frame_.get();
+      spdlog::error("frame: {}, pts: {}, size: {}", audio_frame_num_, av_packet.pts,
+                    av_packet.size);
+      break;
+    }
   }
   return 0;
 }
 
-const AVCodecContext* FFmpegDecoder::GetVideoCodecCtx() const { return video_codec_ctx_.get(); }
+AVCodecContext* FFmpegDecoder::GetVideoCodecCtx() { return video_codec_ctx_.get(); }
+
+AVCodecContext* FFmpegDecoder::GetAudioCodecCtx() { return audio_codec_ctx_.get(); }
 
 int FFmpegDecoder::InitAvCtx() {
   const auto& path = av_path_;
